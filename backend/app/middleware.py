@@ -3,8 +3,14 @@ import time
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.config import settings
+
 # Initialize request logger
 logger = logging.getLogger("app.request")
+
+# Connect app config to Python's numeric logging system
+log_level_int = getattr(logging, settings.log_level.upper(), logging.INFO)
+logger.setLevel(log_level_int)
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
