@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     frontend_origin: str = "http://localhost:5173"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    log_level: str = "INFO"
 
 
 settings = Settings()

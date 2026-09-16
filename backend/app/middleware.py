@@ -9,7 +9,7 @@ from app.config import settings
 logger = logging.getLogger("app.request")
 
 # Connect app config to Python's numeric logging system
-log_level_int = getattr(logging, settings.log_level.upper(), logging.INFO)
+log_level_int = getattr(logging, settings.log_level.upper(), logging.INFO) # defaults to INFO
 logger.setLevel(log_level_int)
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
