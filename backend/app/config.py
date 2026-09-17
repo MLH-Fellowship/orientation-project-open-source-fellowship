@@ -19,8 +19,13 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
 
-    # CORS - the Vite dev server default port
+    # CORS - the Vite dev server default port. In production set this to
+    # the deployed frontend URL. Comma-separate to allow more than one.
     frontend_origin: str = "http://localhost:5173"
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        return [o.strip() for o in self.frontend_origin.split(",") if o.strip()]
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

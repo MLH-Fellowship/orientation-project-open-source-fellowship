@@ -1,7 +1,9 @@
 // Thin wrapper around fetch for talking to the FastAPI backend.
 // Extend this as new endpoints are added (pagination, rename, delete...).
 
-const BASE = "/api";
+// In dev this stays "/api" and Vite proxies it to the backend.
+// In production VITE_API_BASE points at the deployed API.
+const BASE = import.meta.env.VITE_API_BASE || "/api";
 
 export async function createConversation(title) {
   const res = await fetch(`${BASE}/conversations`, {

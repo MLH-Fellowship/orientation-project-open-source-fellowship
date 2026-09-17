@@ -83,6 +83,38 @@ act
 
 This is useful for catching workflow errors, validating job steps, and iterating faster without repeatedly pushing commits to GitHub.
 
+## Deployment
+
+`render.yaml` at the repo root is a [Render Blueprint](https://render.com/docs/blueprint-spec).
+It defines three things: the FastAPI backend, the built frontend as a static
+site, and a Postgres database. Both services have `autoDeploy` on, so every
+push to `main` rebuilds and redeploys.
+
+First time setup:
+
+1. In Render, pick **New > Blueprint** and point it at this repo.
+2. Once the services exist, set these three values in the dashboard. They
+   are deliberately not in `render.yaml` because two of them are URLs that
+   only exist after the first deploy, and one is a secret:
+
+   | Service | Variable | Value |
+   | --- | --- | --- |
+   | `mlh-chat-api` | `GEMINI_API_KEY` | your key from [AI Studio](https://aistudio.google.com/apikey) |
+   | `mlh-chat-api` | `FRONTEND_ORIGIN` | the static site URL, e.g. `https://mlh-chat-web.onrender.com` |
+   | `mlh-chat-web` | `VITE_API_BASE` | the API URL plus `/api`, e.g. `https://mlh-chat-api.onrender.com/api` |
+
+3. Redeploy both so they pick the values up.
+
+Notes:
+
+- Locally nothing changes. `DATABASE_URL` still defaults to the SQLite file
+  and `VITE_API_BASE` is unset, so the frontend keeps using the Vite proxy.
+- Render hands out `postgres://` URLs, which SQLAlchemy 2 rejects. `database.py`
+  rewrites them to `postgresql+psycopg2://`.
+- `FRONTEND_ORIGIN` accepts a comma-separated list if you need more than one origin.
+- On the free plan the backend sleeps after inactivity, so the first request
+  after a quiet period takes about a minute.
+
 ## What's the point?
 
 We want you to learn how to work on Open Source Projects, create PRs and tackling issues.

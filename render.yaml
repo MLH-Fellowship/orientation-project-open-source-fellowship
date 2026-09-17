@@ -1,0 +1,55 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+#
+# Deploys the backend API, the frontend static site, and a Postgres
+# database. Every push to main rebuilds and redeploys both services.
+#
+# Two values are not set here and must be filled in the Render dashboard
+# after the first deploy:
+#   - GEMINI_API_KEY   on the API service
+#   - FRONTEND_ORIGIN  on the API service (the static site's URL)
+#   - VITE_API_BASE    on the web service (the API's URL + /api)
+
+databases:
+  - name: mlh-chat-db
+    plan: free
+    databaseName: mlhchat
+    user: mlhchat
+
+services:
+  - type: web
+    name: mlh-chat-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mlh-chat-db
+          property: connectionString
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
+
+  - type: web
+    name: mlh-chat-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22.11.0"
+      - key: VITE_API_BASE
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
