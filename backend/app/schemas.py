@@ -1,11 +1,24 @@
 """Pydantic request/response schemas."""
+
 from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
 
 class MessageCreate(BaseModel):
-    content: str
+    content: str = Field(..., max_length=10000)
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def strip_content(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("content")
+    @classmethod
+    def content_must_not_be_blank(cls, value: str) -> str:
+        if not value:
+            raise ValueError("content must not be empty")
+        return value
 
 
 class MessageOut(BaseModel):

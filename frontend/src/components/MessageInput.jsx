@@ -10,9 +10,9 @@ export default function MessageInput({ onSend, disabled }) {
   }
 
   return (
-    <div style={{ display: "flex", gap: 8 }}>
+    <div className="message-input">
       <input
-        style={{ flex: 1, padding: 8 }}
+        className="message-input-field"
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && handleSubmit()}

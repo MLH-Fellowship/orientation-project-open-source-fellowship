@@ -1,8 +1,8 @@
+from conftest import TestingSessionLocal
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models import Message
-from conftest import TestingSessionLocal
 
 client = TestClient(app)
 
@@ -49,7 +49,9 @@ def test_list_conversations_rejects_invalid_limit():
 def test_rename_conversation():
     convo = _create_conversation("Old title").json()
 
-    response = client.patch(f"/api/conversations/{convo['id']}", json={"title": "New title"})
+    response = client.patch(
+        f"/api/conversations/{convo['id']}", json={"title": "New title"}
+    )
     assert response.status_code == 200
     body = response.json()
     assert body["id"] == convo["id"]
@@ -62,7 +64,9 @@ def test_rename_conversation():
 def test_rename_conversation_strips_whitespace():
     convo = _create_conversation("Old title").json()
 
-    response = client.patch(f"/api/conversations/{convo['id']}", json={"title": "  Trimmed  "})
+    response = client.patch(
+        f"/api/conversations/{convo['id']}", json={"title": "  Trimmed  "}
+    )
     assert response.status_code == 200
     assert response.json()["title"] == "Trimmed"
 
@@ -97,7 +101,9 @@ def test_rename_conversation_accepts_title_that_only_exceeds_limit_with_padding(
 
 
 def test_rename_conversation_not_found():
-    response = client.patch("/api/conversations/does-not-exist", json={"title": "New title"})
+    response = client.patch(
+        "/api/conversations/does-not-exist", json={"title": "New title"}
+    )
     assert response.status_code == 404
 
 

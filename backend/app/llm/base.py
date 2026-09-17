@@ -5,6 +5,7 @@ Barebones ships with one implementation (Gemini). Fellows will add
 more providers (OpenAI, local/Ollama, etc.) behind this same interface
 -- see ISSUES.md, "LLM Integration" section.
 """
+
 from abc import ABC, abstractmethod
 
 

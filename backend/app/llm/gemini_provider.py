@@ -3,6 +3,7 @@
 Uses the free-tier-eligible Gemini API. Get a key at
 https://aistudio.google.com/apikey
 """
+
 from google import genai
 from google.genai import types
 

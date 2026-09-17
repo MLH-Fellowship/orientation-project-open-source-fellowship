@@ -5,6 +5,7 @@ This is the minimum needed for the UI to create a conversation, send a
 message, and get an LLM reply back. Pagination, streaming, rename,
 delete, etc. are left as fellow issues -- see ISSUES.md.
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -22,10 +23,11 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
+db_dependency = Depends(get_db)
 
 
 @router.post("", response_model=ConversationOut)
-def create_conversation(payload: ConversationCreate, db: Session = Depends(get_db)):
+def create_conversation(payload: ConversationCreate, db: Session = db_dependency):
     convo = Conversation(title=payload.title or "New Conversation")
     db.add(convo)
     db.commit()
@@ -37,7 +39,7 @@ def create_conversation(payload: ConversationCreate, db: Session = Depends(get_d
 def list_conversations(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db),
+    db: Session = db_dependency,
 ):
     query = db.query(Conversation).order_by(Conversation.created_at.desc())
     total = query.count()
@@ -46,7 +48,7 @@ def list_conversations(
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetailOut)
-def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
+def get_conversation(conversation_id: str, db: Session = db_dependency):
     convo = db.get(Conversation, conversation_id)
     if not convo:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -55,7 +57,7 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
 
 @router.patch("/{conversation_id}", response_model=ConversationOut)
 def rename_conversation(
-    conversation_id: str, payload: ConversationUpdate, db: Session = Depends(get_db)
+    conversation_id: str, payload: ConversationUpdate, db: Session = db_dependency
 ):
     convo = db.get(Conversation, conversation_id)
     if not convo:
@@ -68,7 +70,7 @@ def rename_conversation(
 
 
 @router.delete("/{conversation_id}", status_code=204)
-def delete_conversation(conversation_id: str, db: Session = Depends(get_db)):
+def delete_conversation(conversation_id: str, db: Session = db_dependency):
     convo = db.get(Conversation, conversation_id)
     if not convo:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -78,12 +80,16 @@ def delete_conversation(conversation_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{conversation_id}/messages", response_model=MessageOut)
-def send_message(conversation_id: str, payload: MessageCreate, db: Session = Depends(get_db)):
+def send_message(
+    conversation_id: str, payload: MessageCreate, db: Session = db_dependency
+):
     convo = db.get(Conversation, conversation_id)
     if not convo:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    user_msg = Message(conversation_id=conversation_id, role="user", content=payload.content)
+    user_msg = Message(
+        conversation_id=conversation_id, role="user", content=payload.content
+    )
     db.add(user_msg)
     db.commit()
 
@@ -92,7 +98,9 @@ def send_message(conversation_id: str, payload: MessageCreate, db: Session = Dep
     llm = get_llm_provider()
     reply_text = llm.generate_reply(history)
 
-    assistant_msg = Message(conversation_id=conversation_id, role="assistant", content=reply_text)
+    assistant_msg = Message(
+        conversation_id=conversation_id, role="assistant", content=reply_text
+    )
     db.add(assistant_msg)
     db.commit()
     db.refresh(assistant_msg)

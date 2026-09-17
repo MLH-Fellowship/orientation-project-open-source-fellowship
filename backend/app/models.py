@@ -7,6 +7,7 @@ Message       -> belongs to a Conversation, has a role (user/assistant)
 This is intentionally bare. Fellows will extend it with a User model,
 timestamps/soft-deletes, token usage tracking, etc. (see ISSUES.md).
 """
+
 import uuid
 from datetime import datetime
 

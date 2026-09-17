@@ -17,11 +17,11 @@ MLH fellows to extend.
     needs `pydantic-core==2.23.4`. That ships wheels for cp38-cp313 only, so
     pip falls back to building it from source and the build fails:
     `the configured Python interpreter version (3.14) is newer than PyO3's
-    maximum supported version (3.13)`.
+maximum supported version (3.13)`.
   - **Below 3.10 does not work.** `app/schemas.py` uses `str | None` (PEP 604)
     and there is no `from __future__ import annotations`, so Pydantic
     evaluates the annotation at runtime.
-- **Node 20+.** 18 also works. `vite@5` requires `^18.0.0 || >=20.0.0`.
+- **Node 22+.** The current frontend toolchain requires a Node 22 runtime. Older 20.x versions may not satisfy newer package requirements.
 
 ## Project layout
 
@@ -72,6 +72,18 @@ Then visit `http://localhost:5173`.
 ./scripts/dev.sh
 ```
 
+## Debugging GitHub Actions locally
+
+If you’re working on CI workflows, it can be very helpful to run them locally before pushing. A good tool for that is [`act`](https://github.com/nektos/act), which lets you execute GitHub Actions workflows on your machine.
+
+```bash
+# Example: run the default workflow locally
+act
+```
+
+This is useful for catching workflow errors, validating job steps, and iterating faster without repeatedly pushing commits to GitHub.
+
 ## What's the point?
-We want you to learn how to work on Open Source Projects, create PRs and tackling issues. 
+
+We want you to learn how to work on Open Source Projects, create PRs and tackling issues.
 Your Pod Leader will be the maintainer of this project, closing PRs and managing the repository.

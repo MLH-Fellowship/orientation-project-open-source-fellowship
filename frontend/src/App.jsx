@@ -1,35 +1,115 @@
 import { useEffect, useState } from "react";
 
-import { createConversation, getConversation, sendMessage } from "./api/client.js";
+import {
+  createConversation,
+  getConversation,
+  listConversations,
+  sendMessage,
+} from "./api/client.js";
 import MessageInput from "./components/MessageInput.jsx";
 import MessageList from "./components/MessageList.jsx";
+import Sidebar from "./components/Sidebar.jsx";
 
-// Barebones single-conversation UI. There's no sidebar, no conversation
-// switching, no streaming yet -- those are fellow issues (see ISSUES.md).
+import "./app.css";
+
+const initialState = {
+  conversationId: null,
+  messages: [],
+  loading: false,
+};
+
+// Barebones single-conversation UI. There's no streaming yet -- those are fellow issues (see ISSUES.md).
 export default function App() {
-  const [conversationId, setConversationId] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [conversationState, setConversationState] = useState(initialState);
+  const [conversations, setConversations] = useState([]);
 
   useEffect(() => {
-    createConversation("New Conversation").then((c) => setConversationId(c.id));
+    async function fetchConversations() {
+      const data = await listConversations();
+      setConversations(data.items);
+    }
+    fetchConversations();
   }, []);
 
+  async function createNewConversation() {
+    const newConversation = await createConversation("New Conversation");
+    setConversationState(() => ({
+      ...initialState,
+      conversationId: newConversation.id,
+    }));
+    setConversations((prev) => [
+      { id: newConversation.id, title: newConversation.title },
+      ...prev,
+    ]);
+    return newConversation;
+  }
+
   async function handleSend(text) {
-    if (!conversationId) return;
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
-    setLoading(true);
-    await sendMessage(conversationId, text);
-    const full = await getConversation(conversationId);
-    setMessages(full.messages);
-    setLoading(false);
+    let currentConversationId = conversationState.conversationId;
+
+    if (!conversationState.conversationId) {
+      const newConversation = await createNewConversation();
+      currentConversationId = newConversation.id;
+    }
+
+    setConversationState((prev) => ({
+      ...prev,
+      messages: [...prev.messages, { role: "user", content: text }],
+      loading: true,
+    }));
+
+    await sendMessage(currentConversationId, text);
+
+    const full = await getConversation(currentConversationId);
+    setConversationState((prev) => ({
+      ...prev,
+      messages: full.messages,
+      loading: false,
+    }));
+  }
+
+  async function handleSelectConversation(id) {
+    const conversation = await getConversation(id);
+
+    if (conversation.detail) {
+      alert("Error fetching conversation: " + conversation.detail);
+      return;
+    }
+
+    setConversationState(() => ({
+      ...initialState,
+      conversationId: conversation.id,
+      messages: conversation.messages,
+    }));
+  }
+
+  async function handleNewConversation() {
+    setConversationState(initialState);
   }
 
   return (
-    <div style={{ maxWidth: 700, margin: "0 auto", padding: 24, fontFamily: "sans-serif" }}>
-      <h1>MLH LLM Fellowship Project</h1>
-      <MessageList messages={messages} loading={loading} />
-      <MessageInput onSend={handleSend} disabled={loading} />
-    </div>
+    <>
+      <div id="app-container">
+        <aside>
+          <h1>MLH LLM Fellowship Project</h1>
+          <Sidebar
+            conversations={conversations}
+            onNewConversation={handleNewConversation}
+            onSelectConversation={handleSelectConversation}
+            selectedConversationId={conversationState.conversationId}
+          />
+        </aside>
+        <main>
+          <MessageList
+            messages={conversationState.messages}
+            loading={conversationState.loading}
+          />
+          <MessageInput
+            onSend={handleSend}
+            disabled={conversationState.loading}
+          />
+        </main>
+      </div>
+    </>
   );
 }

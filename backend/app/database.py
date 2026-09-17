@@ -5,6 +5,7 @@ Barebones: SQLite file DB, tables created on startup via
 Base.metadata.create_all(). A real migration workflow (Alembic) is
 left as an open issue for fellows -- see ISSUES.md.
 """
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
