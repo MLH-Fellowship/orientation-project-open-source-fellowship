@@ -4,8 +4,8 @@ export default function MessageList({ messages, loading }) {
       {messages.length === 0 && (
         <p className="muted-text">Say hello to start the conversation.</p>
       )}
-      {messages.map((m, i) => (
-        <div key={i} className="message-item">
+      {messages.map((m) => (
+        <div key={m.id} className="message-item">
           <strong>{m.role === "user" ? "You" : "Assistant"}:</strong>{" "}
           {m.content}
         </div>
