@@ -6,7 +6,13 @@ message, and get an LLM reply back. Pagination, streaming, rename,
 delete, etc. are left as fellow issues -- see ISSUES.md.
 """
 
+import json
+import logging
+from contextlib import aclosing
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -27,6 +33,7 @@ router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 db_dependency = Depends(get_db)
 
 CONVERSATION_NOT_FOUND = {404: {"description": "Conversation not found"}}
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -144,3 +151,76 @@ def send_message(
     db.commit()
     db.refresh(assistant_msg)
     return assistant_msg
+
+
+def _stream_event(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+def _save_streamed_reply(bind, conversation_id: str, content: str) -> dict:
+    with Session(bind=bind) as db:
+        if db.get(Conversation, conversation_id) is None:
+            raise ValueError("Conversation no longer exists")
+        message = Message(
+            conversation_id=conversation_id, role="assistant", content=content
+        )
+        db.add(message)
+        db.commit()
+        db.refresh(message)
+        return MessageOut.model_validate(message).model_dump(mode="json")
+
+
+@router.post(
+    "/{conversation_id}/messages/stream",
+    response_class=StreamingResponse,
+    responses={200: {"content": {"text/event-stream": {}}}},
+)
+def stream_message(
+    conversation_id: str, payload: MessageCreate, db: Session = db_dependency
+):
+    convo = db.get(Conversation, conversation_id)
+    if not convo:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    user_msg = Message(
+        conversation_id=conversation_id, role="user", content=payload.content
+    )
+    db.add(user_msg)
+    db.commit()
+    history = [
+        {"role": m.role, "content": m.content}
+        for m in sorted(convo.messages, key=lambda m: m.created_at)
+    ]
+    bind = db.get_bind()
+
+    async def events():
+        try:
+            llm = get_llm_provider()
+            chunks = []
+            async with aclosing(
+                llm.stream_reply(history, settings.system_prompt)
+            ) as stream:
+                async for chunk in stream:
+                    if chunk:
+                        chunks.append(chunk)
+                        yield _stream_event("token", {"content": chunk})
+            if not chunks:
+                raise ValueError("The provider returned no text")
+            message = await run_in_threadpool(
+                _save_streamed_reply, bind, conversation_id, "".join(chunks)
+            )
+        except Exception:
+            logger.exception(
+                "Failed to stream reply for conversation %s", conversation_id
+            )
+            yield _stream_event(
+                "error", {"error": {"code": 500, "message": "Could not generate reply"}}
+            )
+            return
+        yield _stream_event("done", message)
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
