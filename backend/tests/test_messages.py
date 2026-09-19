@@ -1,11 +1,10 @@
 from unittest.mock import Mock
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.config import Settings, settings
 from app.main import app
 from app.routes import chat
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -48,7 +47,9 @@ def test_send_message_rejects_invalid_content(payload, monkeypatch):
 def test_send_message_accepts_and_trims_valid_content(content, expected, monkeypatch):
     provider = Mock()
     provider.generate_reply.return_value = "Hello back"
+    provider.generate_conversation_title.return_value = "Greeting"
     monkeypatch.setattr(chat, "get_llm_provider", lambda: provider)
+
     convo = client.post("/api/conversations", json={}).json()
 
     response = client.post(
@@ -60,8 +61,13 @@ def test_send_message_accepts_and_trims_valid_content(content, expected, monkeyp
     provider.generate_reply.assert_called_once_with(
         [{"role": "user", "content": expected}], settings.system_prompt
     )
+
     fetched = client.get(f"/api/conversations/{convo['id']}")
-    user_messages = [m for m in fetched.json()["messages"] if m["role"] == "user"]
+    convo = fetched.json()
+
+    assert convo["title"] == "Greeting"
+
+    user_messages = [m for m in convo["messages"] if m["role"] == "user"]
     assert len(user_messages) == 1
     assert user_messages[0]["content"] == expected
 
@@ -71,6 +77,7 @@ def test_send_message_passes_configured_system_prompt(monkeypatch):
     monkeypatch.setattr(settings, "system_prompt", "Always reply in pirate speak.")
     provider = Mock()
     provider.generate_reply.return_value = "Arrr"
+    provider.generate_conversation_title.return_value = "..."
     monkeypatch.setattr(chat, "get_llm_provider", lambda: provider)
     convo = client.post("/api/conversations", json={}).json()
 

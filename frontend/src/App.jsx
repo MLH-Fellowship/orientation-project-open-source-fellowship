@@ -113,6 +113,8 @@ export default function App() {
         retry: () => handleSend(text),
       });
     }
+    
+    fetchConversations()
   }
 
   async function handleSelectConversation(id) {

@@ -137,6 +137,11 @@ def send_message(
     llm = get_llm_provider()
     reply_text = llm.generate_reply(history, settings.system_prompt)
 
+    is_first_message = len(convo.messages) == 1
+    if is_first_message:
+        convo.title = llm.generate_conversation_title(convo.messages[0].content)
+        db.commit()
+
     assistant_msg = Message(
         conversation_id=conversation_id, role="assistant", content=reply_text
     )
