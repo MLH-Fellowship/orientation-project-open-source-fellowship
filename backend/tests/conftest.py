@@ -29,4 +29,5 @@ api.dependency_overrides[get_db] = _override_get_db
 def reset_database():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    api.state.limiter.reset()
     yield

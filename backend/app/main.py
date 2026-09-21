@@ -9,6 +9,9 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 
 from app.config import settings
 from app.database import Base, engine
@@ -30,6 +33,10 @@ register_exception_handlers(api)
 
 # Register new logging middleware
 api.add_middleware(RequestLoggingMiddleware)
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["10/minute"])
+api.state.limiter = limiter
+api.add_middleware(SlowAPIMiddleware)
 
 api.include_router(health.router, prefix="/api")
 api.include_router(chat.router)
