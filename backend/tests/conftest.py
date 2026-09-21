@@ -29,5 +29,10 @@ api.dependency_overrides[get_db] = _override_get_db
 def reset_database():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
     api.state.limiter.reset()
     yield

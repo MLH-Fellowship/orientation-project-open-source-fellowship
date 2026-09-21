@@ -48,7 +48,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
 
 
-async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
     logger.warning(
         "Rate limit exceeded during %s %s: %s",
         request.method,
