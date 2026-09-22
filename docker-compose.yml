@@ -15,7 +15,7 @@ services:
       # Source is mounted so --reload picks up edits, and so app.db lives on
       # the host instead of vanishing with the container.
       - ./backend:/app
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    command: sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
   frontend:
     build: ./frontend
