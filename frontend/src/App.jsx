@@ -8,6 +8,7 @@ import {
   renameConversation,
   streamMessage,
 } from "./api/client.js";
+import Icon from "./components/Icon.jsx";
 import ErrorBanner from "./components/ErrorBanner.jsx";
 import MessageInput from "./components/MessageInput.jsx";
 import MessageList from "./components/MessageList.jsx";
@@ -32,6 +33,7 @@ function getInitialTheme() {
 
 export default function App() {
   const activeRequestRef = useRef(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [conversationState, setConversationState] = useState(initialState);
   const [conversations, setConversations] = useState([]);
   const [theme, setTheme] = useState(getInitialTheme);
@@ -90,7 +92,7 @@ export default function App() {
       loading: true,
       messages: [
         ...prev.messages,
-        { id: userId, role: "user", content: text },
+        { id: userId, role: "user", content: text, created_at: new Date().toISOString() },
         { id: assistantId, role: "assistant", content: "", streaming: true },
       ],
     }));
@@ -148,6 +150,7 @@ export default function App() {
   }
 
   async function handleSelectConversation(id) {
+    setSidebarOpen(false);
     if (id === conversationState.conversationId && !conversationState.historyError) return;
     const controller = startRequest(id);
     setConversationState({ ...initialState, conversationId: id, loading: true });
@@ -208,6 +211,7 @@ export default function App() {
   }
 
   async function handleNewConversation() {
+    setSidebarOpen(false);
     activeRequestRef.current?.abort();
     activeRequestRef.current = null;
     setMainError(null);
@@ -216,12 +220,13 @@ export default function App() {
 
   return (
     <>
-      <div id="app-container">
+      <div id="app-container" className={sidebarOpen ? "sidebar-open" : ""}>
+        {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close conversations" onClick={() => setSidebarOpen(false)} />}
         <aside>
           <div id="sidebar-header">
-            <h1>MLH LLM Fellowship Project</h1>
-            <button id="theme-toggle" onClick={toggleTheme}>
-              {theme === "dark" ? "Light mode" : "Dark mode"}
+            <div className="brand"><span className="brand-mark" aria-hidden="true">{String.fromCodePoint(10022)}</span><h1>MLH LLM<br />Fellowship Project</h1></div>
+            <button id="theme-toggle" role="switch" aria-checked={theme === "dark"} aria-label="Dark mode" onClick={toggleTheme}>
+              <Icon name="sun" /><span>Dark mode</span><span className="theme-switch" />
             </button>
           </div>
           {conversationsError && (
@@ -237,6 +242,7 @@ export default function App() {
           />
         </aside>
         <main>
+          <div className="mobile-header"><button className="icon-button" aria-label="Open conversations" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><Icon name="menu" /></button><span>MLH LLM Fellowship</span></div>
           {mainError && (
             <ErrorBanner message={mainError.message} onRetry={mainError.retry} />
           )}
