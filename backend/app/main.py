@@ -14,15 +14,12 @@ from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
 from app.config import settings
-from app.database import Base, engine
 from app.errors import register_exception_handlers
 from app.middleware import RequestLoggingMiddleware
 from app.routes import chat, health
 
 # Set up global log level and enable console output
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
-
-Base.metadata.create_all(bind=engine)
 
 api = FastAPI(
     title=settings.app_name,

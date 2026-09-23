@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings, settings
+from app.llm.base import LLMReply
 from app.main import app
 from app.routes import chat
 
@@ -47,7 +48,7 @@ def test_send_message_rejects_invalid_content(payload, monkeypatch):
 )
 def test_send_message_accepts_and_trims_valid_content(content, expected, monkeypatch):
     provider = Mock()
-    provider.generate_reply.return_value = "Hello back"
+    provider.generate_reply.return_value = LLMReply(text="Hello back")
     monkeypatch.setattr(chat, "get_llm_provider", lambda: provider)
     convo = client.post("/api/conversations", json={}).json()
 
@@ -70,7 +71,7 @@ def test_send_message_passes_configured_system_prompt(monkeypatch):
     """The configured system prompt reaches the provider on every call."""
     monkeypatch.setattr(settings, "system_prompt", "Always reply in pirate speak.")
     provider = Mock()
-    provider.generate_reply.return_value = "Arrr"
+    provider.generate_reply.return_value = LLMReply(text="Arrr")
     monkeypatch.setattr(chat, "get_llm_provider", lambda: provider)
     convo = client.post("/api/conversations", json={}).json()
 
@@ -87,3 +88,62 @@ def test_send_message_passes_configured_system_prompt(monkeypatch):
 def test_system_prompt_falls_back_to_default():
     """With no SYSTEM_PROMPT in the environment, the default is used."""
     assert Settings(_env_file=None).system_prompt == "You are a helpful assistant."
+
+
+def test_send_message_persists_user_and_assistant_messages(monkeypatch):
+    provider = Mock()
+    provider.generate_reply.return_value = LLMReply(text="Paris.")
+    monkeypatch.setattr(chat, "get_llm_provider", lambda: provider)
+    convo = client.post("/api/conversations", json={}).json()
+
+    response = client.post(
+        f"/api/conversations/{convo['id']}/messages",
+        json={"content": "Capital of France?"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["role"] == "assistant"
+    messages = client.get(f"/api/conversations/{convo['id']}").json()["messages"]
+    assert [(m["role"], m["content"]) for m in messages] == [
+        ("user", "Capital of France?"),
+        ("assistant", "Paris."),
+    ]
+
+
+def test_send_message_sends_prior_history_to_the_provider(monkeypatch):
+    """A follow-up message carries the earlier turns with it."""
+    provider = Mock()
+    provider.generate_reply.side_effect = [
+        LLMReply(text="Paris."),
+        LLMReply(text="About 2.1 million."),
+    ]
+    monkeypatch.setattr(chat, "get_llm_provider", lambda: provider)
+    convo = client.post("/api/conversations", json={}).json()
+
+    client.post(
+        f"/api/conversations/{convo['id']}/messages",
+        json={"content": "Capital of France?"},
+    )
+    client.post(
+        f"/api/conversations/{convo['id']}/messages",
+        json={"content": "Population?"},
+    )
+
+    history, _ = provider.generate_reply.call_args.args
+    assert history == [
+        {"role": "user", "content": "Capital of France?"},
+        {"role": "assistant", "content": "Paris."},
+        {"role": "user", "content": "Population?"},
+    ]
+
+
+def test_send_message_to_missing_conversation_returns_404(monkeypatch):
+    provider = Mock()
+    monkeypatch.setattr(chat, "get_llm_provider", lambda: provider)
+
+    response = client.post(
+        "/api/conversations/does-not-exist/messages", json={"content": "hi"}
+    )
+
+    assert response.status_code == 404
+    provider.generate_reply.assert_not_called()

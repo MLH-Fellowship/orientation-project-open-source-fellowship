@@ -1,0 +1,34 @@
+# Runs the backend and the Vite dev server together.
+#   docker compose up --build
+# Then visit http://localhost:5173
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    # Same .env the local setup uses. Optional so `up` still works without it,
+    # though the LLM calls need GEMINI_API_KEY to be set.
+    env_file:
+      - path: ./backend/.env
+        required: false
+    volumes:
+      # Source is mounted so --reload picks up edits, and so app.db lives on
+      # the host instead of vanishing with the container.
+      - ./backend:/app
+    command: sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      # Inside compose, localhost is the frontend's own container, so the Vite
+      # proxy has to target the backend service by name.
+      BACKEND_ORIGIN: http://backend:8000
+    volumes:
+      - ./frontend:/app
+      # Keeps the image's node_modules instead of the host's, which may have
+      # been built for a different platform.
+      - /app/node_modules
+    depends_on:
+      - backend

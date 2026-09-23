@@ -95,6 +95,31 @@ class ConversationDetailOut(ConversationOut):
     messages: list[MessageOut] = []
 
 
+class ConversationUsageOut(BaseModel):
+    """Token totals for one conversation, summed over its assistant messages."""
+
+    conversation_id: str
+    prompt_tokens: int = Field(description="Tokens sent to the provider.")
+    completion_tokens: int = Field(description="Tokens the provider generated.")
+    total_tokens: int = Field(description="prompt_tokens + completion_tokens.")
+    messages_with_usage: int = Field(
+        description="Assistant messages that carry token counts. Replies from "
+        "before this was tracked, and streamed replies, do not."
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "conversation_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                "prompt_tokens": 412,
+                "completion_tokens": 188,
+                "total_tokens": 600,
+                "messages_with_usage": 3,
+            }
+        }
+    )
+
+
 class ConversationListOut(BaseModel):
     items: list[ConversationOut]
     total: int = Field(

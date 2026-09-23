@@ -3,6 +3,8 @@ import ConversationHistoryItem from "./ConversationHistoryItem.jsx";
 export default function ConversationHistory({
   conversations,
   onSelectConversation,
+  onRenameConversation,
+  onDeleteConversation,
   selectedConversationId,
 }) {
   return (
@@ -18,6 +20,8 @@ export default function ConversationHistory({
             id={id}
             title={title}
             onSelectConversation={onSelectConversation}
+            onRenameConversation={onRenameConversation}
+            onDeleteConversation={onDeleteConversation}
             isSelected={id === selectedConversationId}
           />
         ))}

@@ -7,6 +7,7 @@
     "node": ">=22.0.0"
   },
   "scripts": {
+    "test": "node --test",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
@@ -19,8 +20,10 @@
     "@eslint-react/eslint-plugin": "^5.19.1",
     "@eslint/js": "^10.0.1",
     "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^10.0.5",
     "eslint": "^10.10.0",
     "globals": "^17.12.0",
+    "react-test-renderer": "^18.3.1",
     "vite": "^5.4.6"
   }
 }

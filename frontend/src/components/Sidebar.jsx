@@ -5,6 +5,8 @@ export default function Sidebar({
   conversations,
   onSelectConversation,
   onNewConversation,
+  onRenameConversation,
+  onDeleteConversation,
   selectedConversationId,
 }) {
   return (
@@ -13,6 +15,8 @@ export default function Sidebar({
       <ConversationHistory
         conversations={conversations}
         onSelectConversation={onSelectConversation}
+        onRenameConversation={onRenameConversation}
+        onDeleteConversation={onDeleteConversation}
         selectedConversationId={selectedConversationId}
       />
     </div>

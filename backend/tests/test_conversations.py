@@ -142,3 +142,93 @@ def test_delete_conversation_cascades_messages():
 def test_delete_conversation_not_found():
     response = client.delete("/api/conversations/does-not-exist")
     assert response.status_code == 404
+
+
+def test_create_conversation_with_title():
+    response = _create_conversation("Trip planning")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["title"] == "Trip planning"
+    assert body["id"]
+    assert body["created_at"]
+
+
+def test_create_conversation_defaults_title_when_omitted():
+    response = client.post("/api/conversations", json={})
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "New Conversation"
+
+
+def test_create_conversation_defaults_title_when_null_or_empty():
+    for payload in ({"title": None}, {"title": ""}):
+        response = client.post("/api/conversations", json=payload)
+
+        assert response.status_code == 200
+        assert response.json()["title"] == "New Conversation"
+
+
+def test_create_conversation_is_persisted_and_listed():
+    created = _create_conversation("Trip planning").json()
+
+    listed = client.get("/api/conversations").json()
+    assert listed["total"] == 1
+    assert [c["id"] for c in listed["items"]] == [created["id"]]
+
+
+def test_get_conversation_returns_detail_with_no_messages():
+    convo = _create_conversation("Empty").json()
+
+    response = client.get(f"/api/conversations/{convo['id']}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == convo["id"]
+    assert body["title"] == "Empty"
+    assert body["messages"] == []
+
+
+def test_get_conversation_returns_message_history():
+    convo = _create_conversation("With messages").json()
+
+    db = TestingSessionLocal()
+    try:
+        db.add(Message(conversation_id=convo["id"], role="user", content="hello"))
+        db.add(Message(conversation_id=convo["id"], role="assistant", content="hi"))
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get(f"/api/conversations/{convo['id']}")
+
+    assert response.status_code == 200
+    messages = response.json()["messages"]
+    assert [(m["role"], m["content"]) for m in messages] == [
+        ("user", "hello"),
+        ("assistant", "hi"),
+    ]
+    assert all(m["id"] and m["created_at"] for m in messages)
+
+
+def test_get_conversation_not_found():
+    response = client.get("/api/conversations/does-not-exist")
+
+    assert response.status_code == 404
+
+
+def test_get_conversation_does_not_leak_other_conversations_messages():
+    first = _create_conversation("First").json()
+    second = _create_conversation("Second").json()
+
+    db = TestingSessionLocal()
+    try:
+        db.add(Message(conversation_id=first["id"], role="user", content="mine"))
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get(f"/api/conversations/{second['id']}")
+
+    assert response.status_code == 200
+    assert response.json()["messages"] == []

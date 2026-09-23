@@ -35,6 +35,8 @@ backend/
     schemas.py          # Pydantic request/response models
     llm/                # pluggable LLM provider interface
     routes/             # health + conversation/chat endpoints
+  alembic/             # database migration scripts
+  alembic.ini           # alembic configuration
   tests/
 frontend/
   src/
@@ -55,6 +57,7 @@ cd backend
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env   # then add your Gemini_API_Key
+alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -65,6 +68,7 @@ cd backend
 py -3.12 -m venv .venv && source .venv/Scripts/activate
 pip install -r requirements.txt
 cp .env.example .env   # then add your Gemini_API_Key
+alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -95,6 +99,11 @@ Then visit `http://localhost:5173`.
 ./scripts/dev.sh
 ```
 
+This uses [`concurrently`](https://www.npmjs.com/package/concurrently) (a
+frontend dev dependency, so run `npm install` in `frontend/` first). Output
+from each process is labeled `[backend]` or `[frontend]`, and a single
+Ctrl+C stops both.
+
 ### Or use the Makefile
 
 ```bash
@@ -109,6 +118,32 @@ copies `.env.example` to `.env` if it doesn't already exist. Other targets:
 
 The Makefile needs a POSIX shell (`test`, `cp`) and `make` itself, so on
 Windows run it from Git Bash or WSL, not plain `cmd.exe` or PowerShell.
+
+### Or use Docker
+
+Runs both containers, no local Python or Node needed:
+
+```bash
+cp backend/.env.example backend/.env   # then add your Gemini API key
+docker compose up --build
+```
+
+Then visit `http://localhost:5173`. The Vite dev server proxies `/api` to the
+backend container, and both containers mount your working copy, so edits
+reload the same way they do locally.
+
+Stop with `Ctrl-C`, or `docker compose down` to remove the containers.
+
+Notes:
+
+- The backend reads `backend/.env`, the same file the local setup uses. It is
+  optional -- compose starts without it, but LLM calls need `GEMINI_API_KEY`.
+- `app.db` is written to `backend/` on your machine, so conversations survive
+  a container restart and are shared with a local (non-Docker) run.
+- Outside Docker the proxy still points at `http://localhost:8000`. Compose
+  overrides it with `BACKEND_ORIGIN=http://backend:8000`, because inside a
+  container `localhost` is that container itself.
+
 
 ## Configuration
 
@@ -126,6 +161,99 @@ SYSTEM_PROMPT=You are a concise assistant. Answer in two sentences or fewer.
 
 If `SYSTEM_PROMPT` is not set, it defaults to `You are a helpful assistant.`
 (see `backend/app/config.py`). Restart the backend after changing it.
+
+## Database migrations
+
+Tables are managed with [Alembic](https://alembic.sqlalchemy.org/) instead
+of being created automatically on startup. Run migrations after cloning
+and any time you pull changes that touch `app/models.py`.
+
+Apply all pending migrations:
+
+```bash
+alembic upgrade head
+```
+
+### Adding or changing a model
+
+If you add a new model to `app/models.py`, import it in
+`backend/alembic/env.py` alongside the existing models:
+
+```python
+from app.models import Conversation, Message  # add new models here
+```
+
+Alembic's autogenerate only detects models that are actually imported and
+registered on `Base.metadata`. If you skip this step, `alembic revision
+--autogenerate` will silently generate an empty migration with nothing in
+it, since it won't know the new model exists.
+
+Then generate a migration for the change and review the generated file
+before committing it, autogenerate is a good starting point but isn't
+always exactly right:
+
+```bash
+alembic revision --autogenerate -m "describe your change"
+```
+
+If you need to roll back the most recent migration:
+
+```bash
+alembic downgrade -1
+```
+
+### If you already have a local `app.db` from before this change
+
+Older versions of this project created tables automatically on startup.
+If your local `app.db` predates Alembic, it has tables but no migration
+history, so `alembic upgrade head` will fail because the tables already
+exist. Either:
+
+- Keep your existing data and mark it as up to date (safe if your schema
+  already matches `app/models.py`, which it will unless you've made local
+  edits outside of git):
+```bash
+  alembic stamp head
+```
+- Or delete it and let Alembic recreate it from scratch (loses local data,
+  but guarantees a clean slate):
+```bash
+  rm app.db
+  alembic upgrade head
+```
+
+## Data model
+
+### Indexes
+
+`messages.conversation_id` is indexed. Every message lookup filters on it --
+loading a conversation's history, building the prompt for a reply, cascading
+a delete -- and SQLite does not index foreign keys automatically, so without
+it those queries scan the whole table.
+
+### Cascade deletes
+
+Deleting a conversation deletes its messages, but that rule lives in the ORM
+(`cascade="all, delete-orphan"` on `Conversation.messages`), not in the
+database. SQLAlchemy loads the child rows and deletes them itself.
+
+What that means in practice:
+
+| How you delete | Messages |
+| --- | --- |
+| `DELETE /api/conversations/{id}` (what the app does) | deleted |
+| `session.delete(conversation)` | deleted |
+| `session.query(Conversation).filter(...).delete()` | orphaned |
+| raw `DELETE FROM conversations ...` | orphaned |
+
+The last two bypass the ORM, so nothing cleans up the messages. They are not
+rejected either: SQLite only enforces foreign keys when `PRAGMA
+foreign_keys=ON` is set per connection, and this project does not set it.
+
+So: delete conversations through a session, which is what every current code
+path does. Enforcing this in the database instead would mean adding
+`ondelete="CASCADE"` to the foreign key, enabling the pragma on connect, and
+shipping a migration -- worth doing if bulk deletes are ever added.
 
 ## API
 

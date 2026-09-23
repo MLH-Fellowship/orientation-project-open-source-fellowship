@@ -88,6 +88,7 @@ main {
 
     background: none;
     border-radius: 4px;
+    color: var(--color-fg);
     cursor: pointer;
     text-align: left;
 
@@ -95,6 +96,75 @@ main {
       background: var(--color-selected-bg);
       outline: 1px solid var(--color-selected-outline);
     }
+  }
+
+  & li.conversation-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+
+    & > button {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  & .conversation-item-actions {
+    display: none;
+    flex-shrink: 0;
+    gap: 4px;
+  }
+
+  & li.conversation-item:hover .conversation-item-actions,
+  & li.conversation-item:focus-within .conversation-item-actions,
+  & .conversation-item-actions.confirm {
+    display: flex;
+  }
+
+  & .conversation-item-actions button {
+    padding: 4px 6px;
+    font-size: 12px;
+    background: none;
+    color: var(--color-fg);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    cursor: pointer;
+
+    &.danger {
+      color: var(--color-error-fg);
+      border-color: var(--color-error-border);
+    }
+  }
+
+  & li.conversation-delete-confirm {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 8px;
+    background: var(--color-error-bg);
+    color: var(--color-error-fg);
+    border: 1px solid var(--color-error-border);
+    border-radius: 4px;
+  }
+
+  & .conversation-rename-input {
+    width: 100%;
+    padding: 8px;
+    font-size: 14px;
+    background: var(--color-input-bg);
+    color: var(--color-fg);
+    border: 1px solid var(--color-selected-outline);
+    border-radius: 4px;
+  }
+}
+
+@media (hover: none) {
+  #conversation-history .conversation-item-actions {
+    display: flex;
   }
 }
 
@@ -104,6 +174,20 @@ main {
 
 .message-item {
   margin-bottom: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.streaming-cursor {
+  animation: cursor-blink 1s steps(2, start) infinite;
+}
+
+@keyframes cursor-blink {
+  to { visibility: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .streaming-cursor { animation: none; }
 }
 
 .message-input {
