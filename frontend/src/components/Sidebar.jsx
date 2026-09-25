@@ -8,6 +8,9 @@ export default function Sidebar({
   onRenameConversation,
   onDeleteConversation,
   selectedConversationId,
+  onLoadMore,
+  canLoadMore,
+  loadingMore,
 }) {
   return (
     <div id="sidebar">
@@ -18,6 +21,9 @@ export default function Sidebar({
         onRenameConversation={onRenameConversation}
         onDeleteConversation={onDeleteConversation}
         selectedConversationId={selectedConversationId}
+        onLoadMore={onLoadMore}
+        canLoadMore={canLoadMore}
+        loadingMore={loadingMore}
       />
     </div>
   );

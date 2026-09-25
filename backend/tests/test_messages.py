@@ -49,7 +49,9 @@ def test_send_message_rejects_invalid_content(payload, monkeypatch):
 def test_send_message_accepts_and_trims_valid_content(content, expected, monkeypatch):
     provider = Mock()
     provider.generate_reply.return_value = LLMReply(text="Hello back")
+    provider.generate_conversation_title.return_value = "Greeting"
     monkeypatch.setattr(chat, "get_llm_provider", lambda: provider)
+
     convo = client.post("/api/conversations", json={}).json()
 
     response = client.post(
@@ -61,8 +63,13 @@ def test_send_message_accepts_and_trims_valid_content(content, expected, monkeyp
     provider.generate_reply.assert_called_once_with(
         [{"role": "user", "content": expected}], settings.system_prompt
     )
+
     fetched = client.get(f"/api/conversations/{convo['id']}")
-    user_messages = [m for m in fetched.json()["messages"] if m["role"] == "user"]
+    convo = fetched.json()
+
+    assert convo["title"] == "Greeting"
+
+    user_messages = [m for m in convo["messages"] if m["role"] == "user"]
     assert len(user_messages) == 1
     assert user_messages[0]["content"] == expected
 
@@ -72,6 +79,7 @@ def test_send_message_passes_configured_system_prompt(monkeypatch):
     monkeypatch.setattr(settings, "system_prompt", "Always reply in pirate speak.")
     provider = Mock()
     provider.generate_reply.return_value = LLMReply(text="Arrr")
+    provider.generate_conversation_title.return_value = "..."
     monkeypatch.setattr(chat, "get_llm_provider", lambda: provider)
     convo = client.post("/api/conversations", json={}).json()
 
@@ -93,6 +101,7 @@ def test_system_prompt_falls_back_to_default():
 def test_send_message_persists_user_and_assistant_messages(monkeypatch):
     provider = Mock()
     provider.generate_reply.return_value = LLMReply(text="Paris.")
+    provider.generate_conversation_title.return_value = "..."
     monkeypatch.setattr(chat, "get_llm_provider", lambda: provider)
     convo = client.post("/api/conversations", json={}).json()
 
@@ -117,6 +126,7 @@ def test_send_message_sends_prior_history_to_the_provider(monkeypatch):
         LLMReply(text="Paris."),
         LLMReply(text="About 2.1 million."),
     ]
+    provider.generate_conversation_title.return_value = "..."
     monkeypatch.setattr(chat, "get_llm_provider", lambda: provider)
     convo = client.post("/api/conversations", json={}).json()
 
@@ -135,6 +145,65 @@ def test_send_message_sends_prior_history_to_the_provider(monkeypatch):
         {"role": "assistant", "content": "Paris."},
         {"role": "user", "content": "Population?"},
     ]
+
+
+def test_send_message_does_not_regenerate_title_once_set(monkeypatch):
+    """Once a real title has been generated, later messages leave it alone."""
+    provider = Mock()
+    provider.generate_reply.side_effect = [
+        LLMReply(text="Paris."),
+        LLMReply(text="About 2.1 million."),
+    ]
+    provider.generate_conversation_title.return_value = "Capital of France"
+    monkeypatch.setattr(chat, "get_llm_provider", lambda: provider)
+    convo = client.post("/api/conversations", json={}).json()
+
+    client.post(
+        f"/api/conversations/{convo['id']}/messages",
+        json={"content": "Capital of France?"},
+    )
+    client.post(
+        f"/api/conversations/{convo['id']}/messages",
+        json={"content": "Population?"},
+    )
+
+    provider.generate_conversation_title.assert_called_once_with("Capital of France?")
+    fetched = client.get(f"/api/conversations/{convo['id']}")
+    assert fetched.json()["title"] == "Capital of France"
+
+
+def test_send_message_retries_title_generation_after_earlier_failure(monkeypatch):
+    """If title generation fails, it's retried on the next message while the
+    conversation still has its default title."""
+    provider = Mock()
+    provider.generate_reply.side_effect = [
+        LLMReply(text="Paris."),
+        LLMReply(text="About 2.1 million."),
+    ]
+    provider.generate_conversation_title.side_effect = [
+        RuntimeError("boom"),
+        "Capital of France",
+    ]
+    monkeypatch.setattr(chat, "get_llm_provider", lambda: provider)
+    convo = client.post("/api/conversations", json={}).json()
+
+    first = client.post(
+        f"/api/conversations/{convo['id']}/messages",
+        json={"content": "Capital of France?"},
+    )
+    assert first.status_code == 200
+    fetched = client.get(f"/api/conversations/{convo['id']}")
+    assert fetched.json()["title"] == "New Conversation"
+
+    second = client.post(
+        f"/api/conversations/{convo['id']}/messages",
+        json={"content": "Population?"},
+    )
+    assert second.status_code == 200
+    assert provider.generate_conversation_title.call_count == 2
+
+    fetched = client.get(f"/api/conversations/{convo['id']}")
+    assert fetched.json()["title"] == "Capital of France"
 
 
 def test_send_message_to_missing_conversation_returns_404(monkeypatch):

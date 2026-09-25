@@ -13,6 +13,9 @@ from starlette.concurrency import iterate_in_threadpool
 
 from app.config import settings
 from app.llm.base import LLMProvider, LLMReply, TokenUsage
+from app.schemas import MAX_TITLE_LENGTH
+
+model = settings.gemini_model
 
 
 def _token_count(usage, attribute: str) -> int | None:
@@ -38,7 +41,7 @@ class GeminiProvider(LLMProvider):
         ]
 
         response = self.client.models.generate_content(
-            model=settings.gemini_model,
+            model=model,
             contents=contents,
             # Gemini takes the system prompt as config, not as an entry in contents.
             config=types.GenerateContentConfig(system_instruction=system_prompt),
@@ -49,6 +52,36 @@ class GeminiProvider(LLMProvider):
             prompt_tokens=_token_count(usage, "prompt_token_count"),
             completion_tokens=_token_count(usage, "candidates_token_count"),
         )
+
+    def generate_conversation_title(self, message: str) -> str:
+        response = self.client.models.generate_content(
+            model=model,
+            contents=[
+                types.Content(
+                    role="user",
+                    parts=[types.Part(text=message)],
+                )
+            ],
+            config=types.GenerateContentConfig(
+                system_instruction=(
+                    "Generate a short, plain-text title (3-6 words) summarizing "
+                    "this message. No quotes, no markdown, no trailing punctuation."
+                ),
+            ),
+        )
+        if not response.text:
+            finish_reason = None
+            if response.candidates:
+                finish_reason = response.candidates[0].finish_reason
+            raise ValueError(
+                f"Gemini returned no title text (finish_reason={finish_reason})"
+            )
+
+        title = response.text.strip()[:MAX_TITLE_LENGTH]
+        if not title:
+            raise ValueError("Gemini returned a blank title after stripping")
+
+        return title
 
     async def stream_reply(
         self, history: list[dict], system_prompt: str
@@ -61,7 +94,7 @@ class GeminiProvider(LLMProvider):
             for m in history
         ]
         stream = self.client.models.generate_content_stream(
-            model=settings.gemini_model,
+            model=model,
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,

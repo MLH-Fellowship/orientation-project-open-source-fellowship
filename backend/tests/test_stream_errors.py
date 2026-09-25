@@ -10,6 +10,14 @@ from app.main import app
 from app.routes import chat
 
 
+@pytest.fixture(autouse=True)
+def _no_title_generation(monkeypatch):
+    """Stub out title generation: it races the reply save on the shared test connection."""
+    monkeypatch.setattr(
+        chat, "_generate_conversation_title", lambda bind, conversation_id: None
+    )
+
+
 @pytest.mark.parametrize(
     "code, expected",
     [

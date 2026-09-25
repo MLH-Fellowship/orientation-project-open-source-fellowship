@@ -25,8 +25,8 @@ const deferred = () => {
 
 async function mount(t, request) {
   t.mock.method(globalThis, "fetch", async (url, options) => {
-    if (url === "/api/conversations" && !options) {
-      return json({ items: [{ id: "other", title: "Other chat" }] });
+    if (url.split("?")[0] === "/api/conversations" && !options) {
+      return json({ items: [{ id: "other", title: "Other chat" }], total: 1 });
     }
     return request(url, options);
   });
@@ -40,8 +40,20 @@ async function mount(t, request) {
     globalThis.document = previousDocument;
     globalThis.localStorage = previousStorage;
   });
+  const inputMock = { focused: false, focus() { this.focused = true; } };
+  const listMock = { scrollTop: 0, scrollHeight: 100, clientHeight: 100 };
   let view;
-  await act(async () => { view = create(React.createElement(App)); });
+  await act(async () => {
+    view = create(React.createElement(App), {
+      createNodeMock: (element) => {
+        if (element.props.id === "message-list") return listMock;
+        if (element.props.className === "message-input-field") return inputMock;
+        return null;
+      },
+    });
+  });
+  view.inputMock = inputMock;
+  view.listMock = listMock;
   t.after(async () => { await act(async () => view.unmount()); });
   return view;
 }
@@ -273,4 +285,72 @@ test("loading history shows a loading status without suggesting an assistant rep
   assert.doesNotMatch(JSON.stringify(view.toJSON()), /Loading conversation/);
   assert.equal(component(view, "MessageList").props.messages[0].content, "Previous message");
   assert.equal(component(view, "MessageInput").props.disabled, false);
+});
+
+test("the input refocuses once a reply finishes and the field re-enables", async (t) => {
+  const view = await mount(t, async (url) => url === "/api/conversations"
+    ? json({ id: "chat", title: "New" })
+    : new Response('event: done\ndata: {"id":"saved","role":"assistant","content":"Hello back"}\n\n'));
+  view.inputMock.focused = false;
+  await act(async () => component(view, "MessageInput").props.onSend("Hello"));
+  assert.equal(component(view, "MessageInput").props.disabled, false);
+  assert.equal(view.inputMock.focused, true);
+});
+
+test("the input does not steal focus from another editable element when a reply finishes", async (t) => {
+  const view = await mount(t, async (url) => url === "/api/conversations"
+    ? json({ id: "chat", title: "New" })
+    : new Response('event: done\ndata: {"id":"saved","role":"assistant","content":"Hello back"}\n\n'));
+  view.inputMock.focused = false;
+  globalThis.document.activeElement = { tagName: "INPUT" };
+  await act(async () => component(view, "MessageInput").props.onSend("Hello"));
+  assert.equal(component(view, "MessageInput").props.disabled, false);
+  assert.equal(view.inputMock.focused, false);
+});
+
+test("starting a new conversation focuses the input", async (t) => {
+  const view = await mount(t, async (url) => url === "/api/conversations"
+    ? json({ id: "chat", title: "New" })
+    : new Response('event: done\ndata: {"id":"saved","role":"assistant","content":"Hello back"}\n\n'));
+  await act(async () => component(view, "MessageInput").props.onSend("Hello"));
+  assert.equal(component(view, "Sidebar").props.selectedConversationId, "chat");
+  view.inputMock.focused = false;
+  await act(async () => component(view, "Sidebar").props.onNewConversation());
+  assert.equal(component(view, "Sidebar").props.selectedConversationId, null);
+  assert.equal(view.inputMock.focused, true);
+});
+
+test("the message list scrolls to the bottom when a message is sent", async (t) => {
+  const view = await mount(t, async (url) => url === "/api/conversations"
+    ? json({ id: "chat", title: "New" })
+    : new Response('event: done\ndata: {"id":"saved","role":"assistant","content":"Hello back"}\n\n'));
+  view.listMock.scrollTop = 0;
+  await act(async () => component(view, "MessageInput").props.onSend("Hello"));
+  assert.equal(view.listMock.scrollTop, view.listMock.scrollHeight);
+});
+
+test("the message list keeps scrolling to the bottom as a reply streams in", async (t) => {
+  let stream;
+  const view = await mount(t, async (url) => {
+    if (url === "/api/conversations") return json({ id: "chat", title: "New" });
+    return new Response(new ReadableStream({ start(controller) { stream = controller; } }));
+  });
+  let sending;
+  await act(async () => { sending = component(view, "MessageInput").props.onSend("Hello"); });
+  const listNode = view.listMock;
+
+  listNode.scrollTop = 0;
+  listNode.scrollHeight = 100;
+  await act(async () => stream.enqueue(new TextEncoder().encode('event: token\ndata: {"content":"First"}\n\n')));
+  assert.equal(listNode.scrollTop, 100);
+
+  listNode.scrollTop = 0;
+  listNode.scrollHeight = 250;
+  await act(async () => stream.enqueue(new TextEncoder().encode('event: token\ndata: {"content":" more"}\n\n')));
+  assert.equal(listNode.scrollTop, 250);
+
+  await act(async () => {
+    stream.enqueue(new TextEncoder().encode('event: done\ndata: {"id":"saved","role":"assistant","content":"First more"}\n\n'));
+    await sending;
+  });
 });

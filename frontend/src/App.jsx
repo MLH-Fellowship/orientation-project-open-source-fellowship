@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   createConversation,
@@ -16,11 +16,20 @@ import Sidebar from "./components/Sidebar.jsx";
 
 import "./app.css";
 
+const CONVERSATIONS_PAGE_SIZE = 20;
+
 const initialState = {
   conversationId: null,
   messages: [],
   loading: false,
   historyError: false,
+};
+
+const initialHistory = {
+  items: [],
+  total: 0,
+  loadingMore: false,
+  error: null,
 };
 
 function getInitialTheme() {
@@ -35,9 +44,8 @@ export default function App() {
   const activeRequestRef = useRef(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [conversationState, setConversationState] = useState(initialState);
-  const [conversations, setConversations] = useState([]);
+  const [history, setHistory] = useState(initialHistory);
   const [theme, setTheme] = useState(getInitialTheme);
-  const [conversationsError, setConversationsError] = useState(null);
   const [mainError, setMainError] = useState(null);
 
   useEffect(() => {
@@ -62,14 +70,48 @@ export default function App() {
   }
 
   async function fetchConversations() {
-    setConversationsError(null);
+    setHistory((prev) => ({ ...prev, error: null }));
     try {
-      const data = await listConversations();
-      setConversations(data.items);
+      const data = await listConversations({
+        limit: CONVERSATIONS_PAGE_SIZE,
+        offset: 0,
+      });
+      setHistory((prev) => ({ ...prev, items: data.items, total: data.total }));
     } catch {
-      setConversationsError("Couldn't load your conversations.");
+      setHistory((prev) => ({
+        ...prev,
+        error: "Couldn't load your conversations.",
+      }));
     }
   }
+
+  const loadedCount = history.items.length;
+  const loadMoreConversations = useCallback(async () => {
+    setHistory((prev) => ({ ...prev, loadingMore: true, error: null }));
+    try {
+      const data = await listConversations({
+        limit: CONVERSATIONS_PAGE_SIZE,
+        offset: loadedCount,
+      });
+      setHistory((prev) => {
+        const seen = new Set(prev.items.map((c) => c.id));
+        return {
+          ...prev,
+          items: [...prev.items, ...data.items.filter((c) => !seen.has(c.id))],
+          total: data.total,
+          loadingMore: false,
+        };
+      });
+    } catch {
+      setHistory((prev) => ({
+        ...prev,
+        loadingMore: false,
+        error: "Couldn't load more conversations.",
+      }));
+    }
+  }, [loadedCount]);
+  const canLoadMoreConversations =
+    loadedCount < history.total && !history.loadingMore && !history.error;
 
   function startRequest(conversationId) {
     activeRequestRef.current?.abort();
@@ -80,7 +122,12 @@ export default function App() {
   }
 
   async function handleSend(text) {
-    if (activeRequestRef.current || conversationState.loading || conversationState.historyError) return;
+    if (
+      activeRequestRef.current ||
+      conversationState.loading ||
+      conversationState.historyError
+    )
+      return;
     const controller = startRequest(conversationState.conversationId);
     const isCurrent = () => activeRequestRef.current === controller;
     setMainError(null);
@@ -92,19 +139,32 @@ export default function App() {
       loading: true,
       messages: [
         ...prev.messages,
-        { id: userId, role: "user", content: text, created_at: new Date().toISOString() },
+        {
+          id: userId,
+          role: "user",
+          content: text,
+          created_at: new Date().toISOString(),
+        },
         { id: assistantId, role: "assistant", content: "", streaming: true },
       ],
     }));
+    const isNewConversation = !currentConversationId;
 
     try {
-      if (!currentConversationId) {
+      if (isNewConversation) {
         const conversation = await createConversation("New Conversation");
-        setConversations((prev) => [conversation, ...prev]);
+        setHistory((prev) => ({
+          ...prev,
+          items: [conversation, ...prev.items],
+          total: prev.total + 1,
+        }));
         if (!isCurrent()) return;
         currentConversationId = conversation.id;
         controller.conversationId = conversation.id;
-        setConversationState((prev) => ({ ...prev, conversationId: conversation.id }));
+        setConversationState((prev) => ({
+          ...prev,
+          conversationId: conversation.id,
+        }));
       }
       const message = await streamMessage(currentConversationId, text, {
         signal: controller.signal,
@@ -112,8 +172,9 @@ export default function App() {
           if (!isCurrent()) return;
           setConversationState((prev) => ({
             ...prev,
-            messages: prev.messages.map((m) => m.id === assistantId
-              ? { ...m, content: m.content + token } : m),
+            messages: prev.messages.map((m) =>
+              m.id === assistantId ? { ...m, content: m.content + token } : m,
+            ),
           }));
         },
       });
@@ -121,23 +182,38 @@ export default function App() {
       setConversationState((prev) => ({
         ...prev,
         loading: false,
-        messages: prev.messages.map((m) => m.id === assistantId ? message : m),
+        messages: prev.messages.map((m) =>
+          m.id === assistantId ? message : m,
+        ),
       }));
+
+      if (isNewConversation) {
+        fetchConversations();
+      }
     } catch (error) {
       if (!isCurrent()) return;
       // These HTTP responses reject the request before the backend saves it.
       // An SSE error can also report 404/429, but happens after saving the user message.
-      const rejected = [400, 401, 403, 404, 413, 422, 429].includes(error.status);
+      const rejected = [400, 401, 403, 404, 413, 422, 429].includes(
+        error.status,
+      );
       setConversationState((prev) => ({
         ...prev,
         loading: false,
-        messages: rejected && currentConversationId
-          ? prev.messages.filter((m) => m.id !== assistantId).map((m) =>
-            m.id === userId ? { ...m, failed: true } : m)
-          : currentConversationId
-          ? prev.messages.map((m) => m.id === assistantId
-            ? { ...m, streaming: false, interrupted: true } : m)
-          : prev.messages.filter((m) => m.id !== assistantId && m.id !== userId),
+        messages:
+          rejected && currentConversationId
+            ? prev.messages
+                .filter((m) => m.id !== assistantId)
+                .map((m) => (m.id === userId ? { ...m, failed: true } : m))
+            : currentConversationId
+              ? prev.messages.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, streaming: false, interrupted: true }
+                    : m,
+                )
+              : prev.messages.filter(
+                  (m) => m.id !== assistantId && m.id !== userId,
+                ),
       }));
       // The server may already have saved the user message; do not resend it automatically.
       setMainError({
@@ -151,9 +227,17 @@ export default function App() {
 
   async function handleSelectConversation(id) {
     setSidebarOpen(false);
-    if (id === conversationState.conversationId && !conversationState.historyError) return;
+    if (
+      id === conversationState.conversationId &&
+      !conversationState.historyError
+    )
+      return;
     const controller = startRequest(id);
-    setConversationState({ ...initialState, conversationId: id, loading: true });
+    setConversationState({
+      ...initialState,
+      conversationId: id,
+      loading: true,
+    });
     setMainError(null);
     try {
       const conversation = await getConversation(id);
@@ -165,13 +249,18 @@ export default function App() {
       }));
     } catch {
       if (activeRequestRef.current !== controller) return;
-      setConversationState((prev) => ({ ...prev, loading: false, historyError: true }));
+      setConversationState((prev) => ({
+        ...prev,
+        loading: false,
+        historyError: true,
+      }));
       setMainError({
         message: "Couldn't load that conversation.",
         retry: () => handleSelectConversation(id),
       });
     } finally {
-      if (activeRequestRef.current === controller) activeRequestRef.current = null;
+      if (activeRequestRef.current === controller)
+        activeRequestRef.current = null;
     }
   }
 
@@ -179,9 +268,12 @@ export default function App() {
     setMainError(null);
     try {
       const updated = await renameConversation(id, title);
-      setConversations((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, title: updated.title } : c)),
-      );
+      setHistory((prev) => ({
+        ...prev,
+        items: prev.items.map((c) =>
+          c.id === id ? { ...c, title: updated.title } : c,
+        ),
+      }));
     } catch {
       setMainError({
         message: "Couldn't rename that conversation.",
@@ -198,7 +290,11 @@ export default function App() {
         activeRequestRef.current.abort();
         activeRequestRef.current = null;
       }
-      setConversations((prev) => prev.filter((c) => c.id !== id));
+      setHistory((prev) => ({
+        ...prev,
+        items: prev.items.filter((c) => c.id !== id),
+        total: prev.total - 1,
+      }));
       setConversationState((prev) =>
         prev.conversationId === id ? initialState : prev,
       );
@@ -221,30 +317,74 @@ export default function App() {
   return (
     <>
       <div id="app-container" className={sidebarOpen ? "sidebar-open" : ""}>
-        {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close conversations" onClick={() => setSidebarOpen(false)} />}
+        {sidebarOpen && (
+          <button
+            className="sidebar-backdrop"
+            aria-label="Close conversations"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
         <aside>
           <div id="sidebar-header">
-            <div className="brand"><span className="brand-mark" aria-hidden="true">{String.fromCodePoint(10022)}</span><h1>MLH LLM<br />Fellowship Project</h1></div>
-            <button id="theme-toggle" role="switch" aria-checked={theme === "dark"} aria-label="Dark mode" onClick={toggleTheme}>
-              <Icon name="sun" /><span>Dark mode</span><span className="theme-switch" />
+            <div className="brand">
+              <span className="brand-mark" aria-hidden="true">
+                {String.fromCodePoint(10022)}
+              </span>
+              <h1>
+                MLH LLM
+                <br />
+                Fellowship Project
+              </h1>
+            </div>
+            <button
+              id="theme-toggle"
+              role="switch"
+              aria-checked={theme === "dark"}
+              aria-label="Dark mode"
+              onClick={toggleTheme}
+            >
+              <Icon name="sun" />
+              <span>Dark mode</span>
+              <span className="theme-switch" />
             </button>
           </div>
-          {conversationsError && (
-            <ErrorBanner message={conversationsError} onRetry={fetchConversations} />
+          {history.error && (
+            <ErrorBanner
+              message={history.error}
+              onRetry={
+                loadedCount === 0 ? fetchConversations : loadMoreConversations
+              }
+            />
           )}
           <Sidebar
-            conversations={conversations}
+            conversations={history.items}
             onNewConversation={handleNewConversation}
             onSelectConversation={handleSelectConversation}
             onRenameConversation={handleRenameConversation}
             onDeleteConversation={handleDeleteConversation}
             selectedConversationId={conversationState.conversationId}
+            onLoadMore={loadMoreConversations}
+            canLoadMore={canLoadMoreConversations}
+            loadingMore={history.loadingMore}
           />
         </aside>
         <main>
-          <div className="mobile-header"><button className="icon-button" aria-label="Open conversations" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><Icon name="menu" /></button><span>MLH LLM Fellowship</span></div>
+          <div className="mobile-header">
+            <button
+              className="icon-button"
+              aria-label="Open conversations"
+              aria-expanded={sidebarOpen}
+              onClick={() => setSidebarOpen(true)}
+            >
+              <Icon name="menu" />
+            </button>
+            <span>MLH LLM Fellowship</span>
+          </div>
           {mainError && (
-            <ErrorBanner message={mainError.message} onRetry={mainError.retry} />
+            <ErrorBanner
+              message={mainError.message}
+              onRetry={mainError.retry}
+            />
           )}
           <MessageList
             messages={conversationState.messages}
@@ -252,7 +392,10 @@ export default function App() {
           />
           <MessageInput
             onSend={handleSend}
-            disabled={conversationState.loading || conversationState.historyError}
+            conversationId={conversationState.conversationId}
+            disabled={
+              conversationState.loading || conversationState.historyError
+            }
           />
         </main>
       </div>

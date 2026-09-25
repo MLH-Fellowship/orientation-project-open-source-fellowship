@@ -16,6 +16,7 @@ client = TestClient(app)
 def _mock_provider(monkeypatch, *replies):
     provider = Mock()
     provider.generate_reply.side_effect = list(replies)
+    provider.generate_conversation_title.return_value = "..."
     monkeypatch.setattr(chat, "get_llm_provider", lambda: provider)
     return provider
 

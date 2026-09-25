@@ -11,7 +11,16 @@ timestamps/soft-deletes, token usage tracking, etc. (see ISSUES.md).
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    event,
+)
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -21,12 +30,16 @@ def _uuid() -> str:
     return str(uuid.uuid4())
 
 
+DEFAULT_TITLE = "New Conversation"
+
+
 class User(Base):
     __tablename__ = "users"
 
     id = Column(String, primary_key=True, default=_uuid)
     email = Column(String, nullable=False, unique=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    hashed_password = Column(String, nullable=True)
 
     conversations = relationship("Conversation", back_populates="user")  # no cascade
 
@@ -35,7 +48,11 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(String, primary_key=True, default=_uuid)
-    title = Column(String, default="New Conversation")
+    title = Column(String, default=DEFAULT_TITLE)
+    # True until a title is auto-generated or the user renames the
+    # conversation, whichever happens first. Addresses an edge case where a user
+    # renames a conversation to the default title.
+    title_is_default = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user_id = Column(String, ForeignKey("users.id"), nullable=True)
@@ -47,6 +64,11 @@ class Conversation(Base):
     messages = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan"
     )
+
+
+@event.listens_for(Conversation, "before_insert")
+def set_title_is_default(mapper, connection, target):
+    target.title_is_default = target.title == DEFAULT_TITLE
 
 
 class Message(Base):

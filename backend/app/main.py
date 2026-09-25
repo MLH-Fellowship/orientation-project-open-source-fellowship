@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.middleware import SlowAPIMiddleware
 
+from app.auth import router as auth_router
 from app.config import settings
 from app.errors import register_exception_handlers
 from app.limiter import limiter
@@ -35,6 +36,7 @@ api.add_middleware(SlowAPIMiddleware)
 
 api.include_router(health.router, prefix="/api")
 api.include_router(chat.router)
+api.include_router(auth_router)
 
 app = CORSMiddleware(
     app=api,

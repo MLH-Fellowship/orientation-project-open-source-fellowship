@@ -6,6 +6,7 @@ message, and get an LLM reply back. Pagination, streaming, rename,
 delete, etc. are left as fellow issues -- see ISSUES.md.
 """
 
+import asyncio
 import json
 import logging
 from contextlib import aclosing
@@ -21,7 +22,7 @@ from app.database import get_db
 from app.errors import stream_error
 from app.llm import get_llm_provider
 from app.llm.base import TokenUsage
-from app.models import Conversation, Message
+from app.models import DEFAULT_TITLE, Conversation, Message
 from app.schemas import (
     ConversationCreate,
     ConversationDetailOut,
@@ -47,7 +48,7 @@ logger = logging.getLogger(__name__)
     description="Creates a new, empty conversation. If no title is given, defaults to 'New Conversation'.",
 )
 def create_conversation(payload: ConversationCreate, db: Session = db_dependency):
-    convo = Conversation(title=payload.title or "New Conversation")
+    convo = Conversation(title=payload.title or DEFAULT_TITLE)
     db.add(convo)
     db.commit()
     db.refresh(convo)
@@ -102,6 +103,7 @@ def rename_conversation(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     convo.title = payload.title
+    convo.title_is_default = False
     db.commit()
     db.refresh(convo)
     return convo
@@ -121,6 +123,30 @@ def delete_conversation(conversation_id: str, db: Session = db_dependency):
 
     db.delete(convo)
     db.commit()
+
+
+def _generate_conversation_title(bind, conversation_id: str) -> None:
+    with Session(bind=bind) as db:
+        convo = db.get(Conversation, conversation_id)
+        if convo is None:
+            return
+        try:
+            first_message = convo.messages[0]
+            llm = get_llm_provider()
+            title = llm.generate_conversation_title(first_message.content)
+
+            db.refresh(convo)
+            if not convo.title_is_default:
+                return
+
+            convo.title = title
+            convo.title_is_default = False
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "Failed to generate title for conversation %s", conversation_id
+            )
 
 
 @router.post(
@@ -147,6 +173,9 @@ def send_message(
 
     llm = get_llm_provider()
     reply = llm.generate_reply(history, settings.system_prompt)
+
+    if convo.title_is_default:
+        _generate_conversation_title(db.get_bind(), conversation_id)
 
     assistant_msg = Message(
         conversation_id=conversation_id,
@@ -234,6 +263,7 @@ def stream_message(
     )
     db.add(user_msg)
     db.commit()
+
     history = [
         {"role": m.role, "content": m.content}
         for m in sorted(convo.messages, key=lambda m: m.created_at)
@@ -241,7 +271,15 @@ def stream_message(
     bind = db.get_bind()
 
     async def events():
+        title_task = None
         try:
+            if convo.title_is_default:
+                title_task = asyncio.create_task(
+                    run_in_threadpool(
+                        _generate_conversation_title, bind, conversation_id
+                    )
+                )
+
             llm = get_llm_provider()
             chunks = []
             async with aclosing(
@@ -263,6 +301,8 @@ def stream_message(
                 "".join(chunks),
                 usage if isinstance(usage, TokenUsage) else None,
             )
+            if title_task is not None:
+                await title_task
         except Exception as exc:
             logger.exception(
                 "Failed to stream reply for conversation %s", conversation_id

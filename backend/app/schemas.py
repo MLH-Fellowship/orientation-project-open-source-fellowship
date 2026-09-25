@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+MAX_TITLE_LENGTH = 200
+
 
 class MessageCreate(BaseModel):
     content: str = Field(
@@ -56,7 +58,7 @@ class ConversationCreate(BaseModel):
 class ConversationUpdate(BaseModel):
     title: str = Field(
         ...,
-        max_length=200,
+        max_length=MAX_TITLE_LENGTH,
         description="New title. Must not be blank after stripping whitespace.",
         examples=["Trip planning (updated)"],
     )

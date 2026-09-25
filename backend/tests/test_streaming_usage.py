@@ -20,6 +20,14 @@ from app.routes import chat
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _no_title_generation(monkeypatch):
+    """Stub out title generation: it races the reply save on the shared test connection."""
+    monkeypatch.setattr(
+        chat, "_generate_conversation_title", lambda bind, conversation_id: None
+    )
+
+
 class _StreamingProvider:
     """Reports usage at the end of the stream, the way Gemini does."""
 

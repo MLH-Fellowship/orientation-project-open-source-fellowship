@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light";
 import { dracula } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -19,8 +20,34 @@ function timestamp(value) {
 }
 
 export default function MessageList({ messages, loading }) {
+  const containerRef = useRef(null);
+  const isAtBottomRef = useRef(true);
+  const prevLengthRef = useRef(messages.length);
+
+  function handleScroll(e) {
+    const el = e.currentTarget;
+    isAtBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+  }
+
+  useEffect(() => {
+    const el = containerRef.current;
+    const prevLength = prevLengthRef.current;
+    prevLengthRef.current = messages.length;
+    if (!el) return;
+
+    // Always follow the user's own message; otherwise only autoscroll if
+    // they haven't scrolled away from the bottom (e.g. to read history).
+    const userJustSent =
+      messages.length > prevLength && messages[prevLength]?.role === "user";
+
+    if (userJustSent || isAtBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages, loading]);
+
   return (
-    <div id="message-list">
+    <div id="message-list" ref={containerRef} onScroll={handleScroll}>
       {messages.length === 0 && !loading && (
         <div className="empty-state"><span className="empty-spark" aria-hidden="true">✦</span><h2>What’s on your mind?</h2><p>Ask a question, explore an idea, or just say hello.</p></div>
       )}
