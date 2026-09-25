@@ -162,3 +162,71 @@ def test_cors_preflight():
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == settings.frontend_origin
     assert "POST" in response.headers["access-control-allow-methods"]
+
+
+def test_rate_limit_exceeded_uses_error_envelope(caplog):
+    for _ in range(10):
+        assert client.get("/api/conversations").status_code == 200
+
+    with caplog.at_level(logging.WARNING, logger="app.errors"):
+        response = client.get("/api/conversations")
+
+    assert response.status_code == 429
+    assert response.headers["content-type"] == "application/json"
+    assert response.json() == {
+        "error": {"code": 429, "message": "Rate limit exceeded: 10 per 1 minute"}
+    }
+    assert "Rate limit exceeded during GET /api/conversations" in caplog.text
+
+
+def test_health_check_is_exempt_from_rate_limiting():
+    for _ in range(15):
+        assert client.get("/api/health").status_code == 200
+
+
+def test_get_conversation_rate_limit_is_not_shared_across_ids():
+    for _ in range(10):
+        assert client.get("/api/conversations/1").status_code == 404
+
+    # a different id is a different bucket for this route, so it's unaffected
+    assert client.get("/api/conversations/2").status_code == 404
+
+
+def test_send_message_rate_limit_is_shared_across_conversation_ids():
+    payload = {"content": "hi"}
+    for _ in range(5):
+        assert (
+            client.post("/api/conversations/1/messages", json=payload).status_code
+            == 404
+        )
+    for _ in range(5):
+        assert (
+            client.post("/api/conversations/2/messages", json=payload).status_code
+            == 404
+        )
+
+    response = client.post("/api/conversations/2/messages", json=payload)
+
+    assert response.status_code == 429
+
+
+def test_stream_message_rate_limit_is_shared_across_conversation_ids():
+    payload = {"content": "hi"}
+    for _ in range(5):
+        assert (
+            client.post(
+                "/api/conversations/1/messages/stream", json=payload
+            ).status_code
+            == 404
+        )
+    for _ in range(5):
+        assert (
+            client.post(
+                "/api/conversations/2/messages/stream", json=payload
+            ).status_code
+            == 404
+        )
+
+    response = client.post("/api/conversations/2/messages/stream", json=payload)
+
+    assert response.status_code == 429

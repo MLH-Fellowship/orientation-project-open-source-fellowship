@@ -11,7 +11,7 @@ import json
 import logging
 from contextlib import aclosing
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.errors import stream_error
+from app.limiter import limiter
 from app.llm import get_llm_provider
 from app.llm.base import TokenUsage
 from app.models import DEFAULT_TITLE, Conversation, Message
@@ -156,8 +157,12 @@ def _generate_conversation_title(bind, conversation_id: str) -> None:
     description="Adds a user message to the conversation, gets a reply from the configured LLM provider, and returns the assistant's message.",
     responses=CONVERSATION_NOT_FOUND,
 )
+@limiter.shared_limit("10/minute", scope="send_message")
 def send_message(
-    conversation_id: str, payload: MessageCreate, db: Session = db_dependency
+    request: Request,
+    conversation_id: str,
+    payload: MessageCreate,
+    db: Session = db_dependency,
 ):
     convo = db.get(Conversation, conversation_id)
     if not convo:
@@ -251,8 +256,12 @@ def _save_streamed_reply(
     response_class=StreamingResponse,
     responses={200: {"content": {"text/event-stream": {}}}},
 )
+@limiter.shared_limit("10/minute", scope="stream_message")
 def stream_message(
-    conversation_id: str, payload: MessageCreate, db: Session = db_dependency
+    request: Request,
+    conversation_id: str,
+    payload: MessageCreate,
+    db: Session = db_dependency,
 ):
     convo = db.get(Conversation, conversation_id)
     if not convo:

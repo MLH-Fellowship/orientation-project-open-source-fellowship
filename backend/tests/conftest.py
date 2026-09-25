@@ -56,3 +56,9 @@ def reset_database():
         for table in reversed(Base.metadata.sorted_tables):
             connection.execute(table.delete())
     yield
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    api.state.limiter.reset()
+    yield

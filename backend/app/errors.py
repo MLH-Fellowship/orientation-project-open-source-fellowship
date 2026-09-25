@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from google.genai.errors import APIError
 from httpx import TimeoutException
 from requests.exceptions import Timeout
+from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,26 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
 
 
+def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    logger.warning(
+        "Rate limit exceeded during %s %s: %s",
+        request.method,
+        request.url.path,
+        exc.detail,
+    )
+    return JSONResponse(
+        status_code=429,
+        content={
+            "error": {
+                "code": 429,
+                "message": f"Rate limit exceeded: {exc.detail}",
+            }
+        },
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
