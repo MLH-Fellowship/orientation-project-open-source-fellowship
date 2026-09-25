@@ -184,12 +184,49 @@ def test_health_check_is_exempt_from_rate_limiting():
         assert client.get("/api/health").status_code == 200
 
 
-def test_rate_limit_bucket_is_shared_across_conversation_ids():
-    for _ in range(5):
+def test_get_conversation_rate_limit_is_not_shared_across_ids():
+    for _ in range(10):
         assert client.get("/api/conversations/1").status_code == 404
-    for _ in range(5):
-        assert client.get("/api/conversations/2").status_code == 404
 
-    response = client.get("/api/conversations/2")
+    # a different id is a different bucket for this route, so it's unaffected
+    assert client.get("/api/conversations/2").status_code == 404
+
+
+def test_send_message_rate_limit_is_shared_across_conversation_ids():
+    payload = {"content": "hi"}
+    for _ in range(5):
+        assert (
+            client.post("/api/conversations/1/messages", json=payload).status_code
+            == 404
+        )
+    for _ in range(5):
+        assert (
+            client.post("/api/conversations/2/messages", json=payload).status_code
+            == 404
+        )
+
+    response = client.post("/api/conversations/2/messages", json=payload)
+
+    assert response.status_code == 429
+
+
+def test_stream_message_rate_limit_is_shared_across_conversation_ids():
+    payload = {"content": "hi"}
+    for _ in range(5):
+        assert (
+            client.post(
+                "/api/conversations/1/messages/stream", json=payload
+            ).status_code
+            == 404
+        )
+    for _ in range(5):
+        assert (
+            client.post(
+                "/api/conversations/2/messages/stream", json=payload
+            ).status_code
+            == 404
+        )
+
+    response = client.post("/api/conversations/2/messages/stream", json=payload)
 
     assert response.status_code == 429
