@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict
 
+from app.limiter import limiter
+
 router = APIRouter(tags=["health"])
 
 
@@ -16,5 +18,6 @@ class HealthOut(BaseModel):
     summary="Health check",
     description="Liveness check. Returns ok as long as the server process is running -- does not verify database or LLM provider connectivity.",
 )
+@limiter.exempt
 def health_check():
     return {"status": "ok"}

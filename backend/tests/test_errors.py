@@ -166,14 +166,19 @@ def test_cors_preflight():
 
 def test_rate_limit_exceeded_uses_error_envelope(caplog):
     for _ in range(10):
-        assert client.get("/api/health").status_code == 200
+        assert client.get("/api/conversations").status_code == 200
 
     with caplog.at_level(logging.WARNING, logger="app.errors"):
-        response = client.get("/api/health")
+        response = client.get("/api/conversations")
 
     assert response.status_code == 429
     assert response.headers["content-type"] == "application/json"
     assert response.json() == {
         "error": {"code": 429, "message": "Rate limit exceeded: 10 per 1 minute"}
     }
-    assert "Rate limit exceeded during GET /api/health" in caplog.text
+    assert "Rate limit exceeded during GET /api/conversations" in caplog.text
+
+
+def test_health_check_is_exempt_from_rate_limiting():
+    for _ in range(15):
+        assert client.get("/api/health").status_code == 200
