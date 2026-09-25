@@ -182,3 +182,14 @@ def test_rate_limit_exceeded_uses_error_envelope(caplog):
 def test_health_check_is_exempt_from_rate_limiting():
     for _ in range(15):
         assert client.get("/api/health").status_code == 200
+
+
+def test_rate_limit_bucket_is_shared_across_conversation_ids():
+    for _ in range(5):
+        assert client.get("/api/conversations/1").status_code == 404
+    for _ in range(5):
+        assert client.get("/api/conversations/2").status_code == 404
+
+    response = client.get("/api/conversations/2")
+
+    assert response.status_code == 429
