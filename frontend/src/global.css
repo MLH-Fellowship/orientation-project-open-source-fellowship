@@ -1,42 +1,75 @@
 :root {
-  --color-bg: #ffffff;
-  --color-fg: #1a1a1a;
-  --color-border: #dddddd;
-  --color-muted: #888888;
-  --color-input-bg: #ffffff;
-  --color-button-bg: #1a1a1a;
-  --color-button-fg: #ffffff;
-  --color-selected-bg: #dddddd;
-  --color-selected-outline: #333333;
-  --color-error-bg: #fdecea;
-  --color-error-fg: #b3261e;
-  --color-error-border: #f5c6c2;
+  color-scheme:light;
+  --color-bg:#f6f7fb;
+  --color-sidebar:#eef0f7;
+  --color-fg:#202331;
+  --color-border:#d9dce8;
+  --color-muted:#666d81;
+  --color-input-bg:#fff;
+  --color-bubble:#fff;
+  --color-user:#e5e5ff;
+  --color-button-bg:#5658f5;
+  --color-button-fg:#fff;
+  --color-selected-bg:#e0e3ef;
+  --color-selected-outline:#777aff;
+  --color-error-bg:#fdecea;
+  --color-error-fg:#a72525;
+  --color-error-border:#f5c6c2;
 }
 
 :root[data-theme="dark"] {
-  --color-bg: #16161a;
-  --color-fg: #f0f0f0;
-  --color-border: #3a3a3e;
-  --color-muted: #999999;
-  --color-input-bg: #232326;
-  --color-button-bg: #f0f0f0;
-  --color-button-fg: #16161a;
-  --color-selected-bg: #2a2a2e;
-  --color-selected-outline: #999999;
-  --color-error-bg: #3a1f1e;
-  --color-error-fg: #f5a19b;
-  --color-error-border: #5c2b28;
+  color-scheme:dark;
+  --color-bg:#101318;
+  --color-sidebar:#14171c;
+  --color-fg:#f0f1f8;
+  --color-border:#292d37;
+  --color-muted:#a3a9bc;
+  --color-input-bg:#1b1e25;
+  --color-bubble:#242730;
+  --color-user:#252b54;
+  --color-selected-bg:#252830;
+  --color-selected-outline:#7174ff;
+  --color-error-bg:#352024;
+  --color-error-fg:#ffb0b8;
+  --color-error-border:#69363f;
 }
 
 * {
-  box-sizing: border-box;
-  margin: 0;
-  font-family: sans-serif;
+  box-sizing:border-box;
 }
 
-html,
 body {
-  height: 100%;
-  background: var(--color-bg);
-  color: var(--color-fg);
+  margin:0;
+}
+
+html,body,#root {
+  height:100%;
+}
+
+body,button,input {
+  font-family:Inter,"Segoe UI",sans-serif;
+}
+
+body {
+  background:var(--color-bg);
+  color:var(--color-fg);
+  font-size:16px;
+}
+
+button,input {
+  font-size:inherit;
+}
+
+button {
+  cursor:pointer;
+  color:inherit;
+}
+
+button:disabled {
+  cursor:default;
+}
+
+button:focus-visible,input:focus-visible {
+  outline:2px solid var(--color-selected-outline);
+  outline-offset:4px;
 }

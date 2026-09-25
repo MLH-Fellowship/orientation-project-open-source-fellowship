@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import Icon from "./Icon.jsx";
 
 const MAX_TITLE_LENGTH = 200;
 
@@ -97,7 +98,7 @@ export default function ConversationHistoryItem({
         onClick={() => onSelectConversation(id)}
         className={`${isSelected ? "selected" : ""}`}
       >
-        {title}
+        <Icon name="chat" /><span className="conversation-title">{title}</span>
       </button>
       <span className="conversation-item-actions">
         <button type="button" aria-label={`Rename ${title}`} onClick={startRename}>

@@ -1,9 +1,17 @@
 """Schema-level guards for the indexes and cascade rules documented in the README."""
 
-from conftest import TestingSessionLocal
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from conftest import BACKEND_DIR, TestingSessionLocal
 from sqlalchemy import text
 
 from app.models import Conversation, Message
+
+
+def _head_revision() -> str:
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    return ScriptDirectory.from_config(config).get_current_head()
 
 
 def test_conversation_id_is_indexed():
@@ -12,7 +20,18 @@ def test_conversation_id_is_indexed():
     assert ("conversation_id",) in indexed
 
 
-def test_index_exists_in_the_database():
+def test_migrations_built_the_test_schema():
+    """The fixture runs `alembic upgrade head`, so the suite tests real DDL."""
+    db = TestingSessionLocal()
+    try:
+        stamped = db.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    finally:
+        db.close()
+    assert stamped == _head_revision()
+
+
+def test_index_was_created_by_the_migration():
+    """Reads the migrated schema, not the model -- see issue 72."""
     db = TestingSessionLocal()
     try:
         names = [row[1] for row in db.execute(text("PRAGMA index_list(messages)"))]

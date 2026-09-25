@@ -17,9 +17,10 @@ export default function MessageInput({ onSend, disabled }) {
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
         placeholder="Type a message..."
+        aria-label="Message"
         disabled={disabled}
       />
-      <button className="send-button" onClick={handleSubmit} disabled={disabled}>
+      <button className="send-button" onClick={handleSubmit} disabled={disabled || !text.trim()}>
         Send
       </button>
     </div>

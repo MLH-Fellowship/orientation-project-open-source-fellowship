@@ -20,6 +20,7 @@ from app.config import settings
 from app.database import get_db
 from app.errors import stream_error
 from app.llm import get_llm_provider
+from app.llm.base import TokenUsage
 from app.models import Conversation, Message
 from app.schemas import (
     ConversationCreate,
@@ -197,12 +198,18 @@ def _stream_event(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def _save_streamed_reply(bind, conversation_id: str, content: str) -> dict:
+def _save_streamed_reply(
+    bind, conversation_id: str, content: str, usage: TokenUsage | None
+) -> dict:
     with Session(bind=bind) as db:
         if db.get(Conversation, conversation_id) is None:
             raise ValueError("Conversation no longer exists")
         message = Message(
-            conversation_id=conversation_id, role="assistant", content=content
+            conversation_id=conversation_id,
+            role="assistant",
+            content=content,
+            prompt_tokens=usage.prompt_tokens if usage else None,
+            completion_tokens=usage.completion_tokens if usage else None,
         )
         db.add(message)
         db.commit()
@@ -246,8 +253,15 @@ def stream_message(
                         yield _stream_event("token", {"content": chunk})
             if not chunks:
                 raise ValueError("The provider returned no text")
+            # The provider records usage once the stream is exhausted; a
+            # provider that reports none leaves the columns null.
+            usage = getattr(llm, "last_usage", None)
             message = await run_in_threadpool(
-                _save_streamed_reply, bind, conversation_id, "".join(chunks)
+                _save_streamed_reply,
+                bind,
+                conversation_id,
+                "".join(chunks),
+                usage if isinstance(usage, TokenUsage) else None,
             )
         except Exception as exc:
             logger.exception(

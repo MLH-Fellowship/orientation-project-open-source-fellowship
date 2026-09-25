@@ -1,7 +1,9 @@
+import Icon from "./Icon.jsx";
+
 export default function NewConversationButton({ onClick }) {
   return (
     <button onClick={onClick} className="new-conversation-button">
-      New Conversation
+      <Icon name="plus" /> New Conversation
     </button>
   );
 }
