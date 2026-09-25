@@ -39,6 +39,7 @@ class User(Base):
     id = Column(String, primary_key=True, default=_uuid)
     email = Column(String, nullable=False, unique=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    hashed_password = Column(String, nullable=True)
 
     conversations = relationship("Conversation", back_populates="user")  # no cascade
 

@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     app_name: str = "MLH LLM Fellowship Project"
     database_url: str = f"sqlite:///{(BASE_DIR / 'app.db').as_posix()}"
     log_level: str = "INFO"
+    # Signs auth tokens. Left empty, a random key is used per process,
+    # so tokens stop working on restart. Set a real one in .env.
+    jwt_secret_key: str = ""
 
     # LLM provider config. Fellows will extend this to support
     # multiple providers behind the abstract interface in app/llm/.
